@@ -1,0 +1,432 @@
+Progetto iBuy versione 1.01, Rovagnati Mario matr.50644A
+
+1. Definizione dello schema E-R
+Entità
+•	Utente: Questa entità rappresenta la persona fisica che si registra all'interno dell'applicazione web per interagire con il catalogo o gestire le proprie credenziali. Come chiaramente espresso dai requisiti del sistema, un “Utente Registrato” può evolvere il proprio stato e diventare un "Venditore" fornendo la propria partita IVA commerciale. Sulla base di questa specifica di business, si è scelto di modellare una gerarchia parziale (generalizzazione) : questa struttura logica formalizza il fatto che non tutti gli utenti registrati sono venditori, ma ogni singolo venditore registrato a sistema deve necessariamente essere prima di tutto un utente, ereditandone l'intera anagrafica.
+•	Prodotto: Costituisce l'entità padre al centro di una gerarchia totale ed esclusiva (specializzazione). Essa si divide rigidamente nelle due sotto-entità figlie Prodotto Fisico e Prodotto Digitale. Tale ramificazione si rende indispensabile a livello concettuale poiché il sistema deve gestire attributi nativi profondamente eterogenei per le due categorie (pesi logistici vs dimensioni informatiche) e, soprattutto, applicare flussi di calcolo del costo finale della transazione completamente differenziati in base alla tipologia, come tassativamente richiesto dalle specifiche di progetto.
+•	Acquisto: Rappresenta un'entità debole che storicizza il completamento di una transazione commerciale. A livello concettuale, l'acquisto è una risorsa la cui esistenza e la cui identificazione dipendono in modo biunivoco e indissolubile dalle entità forti Utente (l'acquirente che genera l'ordine) e Prodotto (l'oggetto della transazione).
+Attributi
+•	Utente: Caratterizzato dagli attributi username (scelto come Primary Key) , mail (chiave alternativa Unique) , password (stringa obbligatoria) , l'indirizzo di spedizione (modellato originariamente come attributo composto) e l'immagine del profilo (attributo opzionale con cardinalità 0 o 1).
+•	Venditore: Specializzato esclusivamente tramite l'attributo partita_Iva , il quale introduce le proprietà commerciali obbligatorie per gli utenti aziendali.
+•	Prodotto: Caratterizzato da nome, descrizione, costo (prezzo base), un timestamp per tracciare il momento esatto della messa in vendita , una quantità in magazzino e un' immagine descrittiva. La cardinalità opzionale (0, 1) dell'attributo quantità indica esplicitamente che il campo può non essere valorizzato ; in tal caso, come imposto dai requisiti, l'assenza di valore (NULL) istruisce l'applicazione che l'articolo non presenta limiti strutturali alla disponibilità di vendita.
+•	Prodotto Digitale: Esteso dall'attributo specifico dimensione, volto a memorizzare il peso del file digitale (espresso in byte).
+•	Prodotto Fisico: Esteso dall'attributo specifico peso, fondamentale per i futuri calcoli logistici di spedizione (espresso in kg).
+•	Acquisto: Caratterizzato dal timestamp di esecuzione della transazione e dal costo finale storicizzato pagato dall'utente.
+Identificatori (Primary Key nel modello E-R)
+•	Utente: Identificato univocamente dallo username. Il requisito d'esame specifica chiaramente che non è in alcun modo permesso inserire nel sistema username o indirizzi e-mail già allocati ; si è pertanto stabilito di promuovere lo username a chiave primaria della relazione , demandando all'attributo mail il ruolo di chiave alternativa protetta da vincolo esplicito di unicità (UNIQUE).
+•	Venditore: Eredita la propria chiave primaria direttamente dall'entità padre Utente attraverso il legame della gerarchia parziale.
+•	Prodotto: Identificato inizialmente a livello concettuale da una chiave composta formata dagli attributi (nome, timestamp). La combinazione del nome commerciale e dell'istante temporale esatto di pubblicazione impedisce la presenza di collisioni o duplicati all'interno del catalogo.
+•	Acquisto: Essendo un'entità debole, viene identificato combinando la sua chiave parziale locale (timestamp) con gli identificatori forti delle entità ad esso collegate tramite le relazioni (username dell'Utente e la chiave composta del Prodotto).
+Relazioni
+•	Vende (Venditore [0, N] - Prodotto [1, 1]): Associazione binaria che stabilisce la paternità degli articoli a catalogo. Ogni singolo prodotto deve essere immesso a sistema e gestito da uno e un solo venditore autorizzato, mentre un singolo venditore può pubblicare nel tempo un numero indefinito di prodotti (N).
+•	Effettua (Utente [0, N] - Acquisto [1, 1]): Collega stabilmente e in modo obbligatorio ogni singola transazione d'acquisto effettuata all'utente registrato che l'ha generata e saldata.
+•	Contiene (Acquisto [1, 1] - Prodotto [0, N]): Mappa l'oggetto della transazione, legando la ricevuta d'acquisto al rispettivo prodotto prelevato dal catalogo.
+•	Segue (Utente [0, N] - Venditore [0, N]): Associazione molti-a-molti simmetrica ed opzionale progettata per implementare le funzionalità "social" della piattaforma. Permette a un utente generico di seguire molteplici venditori e a un venditore di aggregare una platea di follower.
+
+
+2. Ristrutturazione dello Schema E-R
+Analisi delle Ridondanze
+Durante la fase di revisione dello schema concettuale, è emerso che l'attributo costo presente nell'entità Acquisto si configurava formalmente come un dato derivato. Esso, infatti, è calcolabile a partire dal costo base del Prodotto (sommato al rispettivo peso qualora l'articolo appartenga alla sottocategoria dei prodotti fisici). Tuttavia, si è scelto deliberatamente di mantenere questa ridondanza informativa applicando una strategia di storicizzazione contabile. Salvare il prezzo finale direttamente nella tupla dell'acquisto garantisce l'assoluta integrità e immutabilità dei dati finanziari e storici del sistema : qualora un venditore decidesse di modificare il prezzo a catalogo di un prodotto in una data futura, le transazioni e le ricevute generate nel passato manterranno intatto il valore economico reale registrato al momento del pagamento, prevenendo anomalie contabili retroattive.
+Eliminazione delle Gerarchie
+•	Utente-Venditore: Trattandosi di una generalizzazione parziale (dove non tutti gli utenti sono venditori), si è optato per la sua traduzione fisica mediante la separazione in due tabelle distinte collegate da una relazione di integrità referenziale 1:1. Questa scelta si rivela ottimale dal punto di vista ingegneristico poiché permette di mantenere l'entità Venditore isolata, confinando l'attributo partita_Iva solo dove necessario ed evitando una massiccia ed inefficiente propagazione di valori NULL all'interno della tabella principale Utente per tutti i semplici clienti consumer.
+•	Prodotto: Essendo una gerarchia totale ed esclusiva (un prodotto è obbligatoriamente o fisico o digitale), si è scelta la strategia dell' accorpamento nel padre. Le sotto-entità figlie sono state fuse in un'unica grande relazione chiamata Prodotto. Per discriminare la natura del record, è stato introdotto un attributo discriminante obbligatorio chiamato tipo (avente dominio limitato a 'Fisico' o 'Digitale') , mentre gli attributi specifici peso e dimensione sono stati impostati come opzionali (NULL). Questa ristrutturazione ottimizza drasticamente le prestazioni del sistema, azzerando le costose operazioni di JOIN orizzontali in fase di browsing del catalogo da parte del client.
+Partizionamento/Accorpamento di Concetti
+Si è proceduto alla scomposizione analitica dell'attributo composto Indirizzo dell'utente per adeguarlo ai vincoli della Prima Forma Normale (1FN). I suoi sotto-attributi costitutivi (via, numero_Civico, CAP, città) sono stati convertiti in attributi atomici semplici direttamente integrati nella tabella Utente. Poiché l'indirizzo originale era opzionale, tutti e quattro i nuovi attributi fisici conservano la cardinalità opzionale (0, 1), consentendo l'iscrizione immediata di utenti guest senza l'obbligo di inserire un domicilio prima dell'acquisto.
+Scelta degli identificatori principali
+•	Prodotto: In fase di ristrutturazione logica, la chiave concettuale composta iniziale (nome, timestamp) è stata scartata e sostituita con una chiave surrogata artificiale denominata codice_Prodotto. L'introduzione di un codice alfanumerico univoco compatto ottimizza lo spazio di memorizzazione degli indici di sistema e velocizza sensibilmente l'esecuzione delle query di JOIN con le tabelle degli acquisti, evitando il confronto computazionalmente pesante su stringhe lunghe e timestamp.
+•	Acquisto: Per evitare una chiave primaria composta ereditata eccessivamente complessa e pesante (che avrebbe richiesto ben quattro attributi congiunti), è stata creata una chiave surrogata univoca denominata codice_Acquisto. Questo identificatore artificiale risponde appieno ai criteri accademici di semplicità e frequenza d'uso, garantendo prestazioni ottimali nelle operazioni di ricerca e aggiornamento del backend.
+
+
+
+Schema Relazionale
+
+Legenda Notazione:
+- Chiave primaria: sottolineato <u>
+- Chiave esterna: italico <i>
+- Vincolo di unicità: grassetto <b>
+- Valore opzionale (può essere vuoto): [NULL]
+
+Relazioni:
+- utente(<u>username</u>, <b>mail</b>, password, imm_Profilo [NULL], via [NULL], numero_Civico [NULL], CAP [NULL], citta [NULL])
+- venditore(<u>partita_Iva</u>, <b><i>username_Utente</i></b>)
+  foreign key (username_Utente) references utente (username)
+- prodotto(<u>codice_Prodotto</u>, nome, timestamp, costo, descrizione, tipo, quantita [NULL], immagine [NULL], peso [NULL], dimensione [NULL], <i>partita_Iva_Venditore</i>)
+  foreign key (partita_Iva_Venditore) references venditore (partita_Iva)
+- acquisto(<u>codice_Acquisto</u>, timestamp, costo, <i>username_Utente</i>, <i>codice_Prodotto</i>)
+  foreign key (username_Utente) references utente (username)
+  foreign key (codice_Prodotto) references prodotto (codice_Prodotto)
+- segue(<u><i>username_Utente</i></u>, <u><i>partita_Iva_Venditore</i></u>)
+  foreign key (username_Utente) references utente (username)
+  foreign key (partita_Iva_Venditore) references venditore (partita_Iva)
+- refresh_token(<u>id</u>, token, <i>username_Utente</i>, creato_il)
+  foreign key (username_Utente) references utente (username) on delete cascade
+
+Progettazione API REST
+
+1. Registrazione e Autenticazione
+
+
+
+Endpoint: `/utenti`
+
+* **Metodo:** `POST`
+* **Descrizione:** Permette a un utente non registrato di creare un account.
+* **Vincoli d'accesso:** Nessuno.
+* **Parametri (Body JSON):** `mail`, `username`, `password`.
+* **Risposta (Esempio JSON):**
+{
+"messaggio": "Utente registrato con successo.",
+"username": "mario_rossi"
+}
+* **Codici di stato:** `201 Created` (se successo), `400 Bad Request` (se mancano parametri o se mail/username esistono già).
+
+Endpoint: `/login`
+
+* **Metodo:** `POST`
+* **Descrizione:** Verifica le credenziali, rilascia i token e salva il refresh token nel DB.
+* **Vincoli d'accesso:** Nessuno.
+* **Parametri (Body JSON):** `username`, `password`.
+* **Risposta (Esempio JSON):**
+{
+"accessToken": "eyJhbGci...",
+"refreshToken": "dF3g5H..."
+}
+* **Codici di stato:** `200 OK` (credenziali valide), `401 Unauthorized` (credenziali errate).
+
+Endpoint: `/refresh`
+
+* **Metodo:** `POST`
+* **Descrizione:** Permette a un utente di richiedere una nuova coppia di token inviando il refresh token corrente, attuando la rotazione per la sicurezza della sessione.
+* **Vincoli d'accesso:** Nessuno.
+* **Parametri (Body JSON):** `refreshToken`.
+* **Risposta (Esempio JSON):**
+{
+"accessToken": "eyJhbGci...",
+"refreshToken": "dF3g5H..."
+}
+* **Codici di stato:** `200 OK` (rinnovo riuscito), `403 Forbidden` (refresh token non valido, scaduto o già utilizzato).
+
+Endpoint: `/logout`
+
+* **Metodo:** `POST`
+* **Descrizione:** Termina la sessione dell'utente revocando e cancellando il refresh token associato dal database.
+* **Vincoli d'accesso:** Richiede token JWT valido.
+* **Parametri (Body JSON):** `refreshToken`.
+* **Risposta (Esempio JSON):**
+{
+"messaggio": "Logout effettuato con successo."
+}
+* **Codici di stato:** `200 OK`, `400 Bad Request` (se il token manca).
+
+2. Gestione Profilo Utente
+
+
+
+Endpoint: `/profilo`
+
+* **Metodo:** `GET`
+* **Descrizione:** Il cliente loggato può vedere i propri dati.
+* **Vincoli d'accesso:** Richiede token JWT valido (utente loggato).
+* **Parametri (Query String):** Nessuno.
+* **Risposta (Esempio JSON):**
+{
+"username": "mario_rossi",
+"mail": "mario@email.com",
+"imm_Profilo": "mario_prof.jpg",
+"citta": "Roma",
+"venditore": true,
+"partita_Iva": "12345678901"
+}
+* **Codici di stato:** `200 OK` (se autenticato), `401 Unauthorized` (se token mancante o non valido).
+
+Endpoint: `/profilo`
+
+* **Metodo:** `PATCH`
+* **Descrizione:** Il cliente può cambiare parti di se stesso (inserire indirizzo, immagine, o partita IVA per diventare venditore).
+* **Vincoli d'accesso:** Richiede token JWT valido.
+* **Parametri (Body JSON):** Qualsiasi combinazione di `imm_Profilo`, `via`, `numero_Civico`, `CAP`, `citta`, `partita_Iva`.
+* **Risposta (Esempio JSON):**
+{
+"messaggio": "Profilo aggiornato con successo."
+}
+* **Codici di stato:** `200 OK`, `401 Unauthorized`, `400 Bad Request` (se dati malformati).
+
+3. Ricerca e Inserimento Prodotti
+
+
+
+Endpoint: `/prodotti`
+
+* **Metodo:** `GET`
+* **Descrizione:** Un utente (anche non loggato) può cercare i prodotti per nome o filtrare per tipo con paginazione e HATEOAS.
+* **Vincoli d'accesso:** Nessuno.
+* **Parametri (Query String):** `q` (nome da cercare, opzionale), `tipo` (Fisico/Digitale, opzionale), `size` (1-20), `page` (0-n).
+* **Risposta (Esempio JSON):**
+{
+"page": 0,
+"size": 20,
+"q": "maglietta",
+"tipo": "Fisico",
+"next": "/prodotti?q=maglietta&tipo=Fisico&size=20&page=1",
+"prev": null,
+"results": [
+{
+"codice_Prodotto": 1,
+"nome": "Maglietta iBuy",
+"costo": 19.99,
+"tipo": "Fisico",
+"prodottoLNK": "/prodotti/1"
+}
+]
+}
+* **Codici di stato:** `200 OK`.
+
+Endpoint: `/prodotti/:id`
+
+* **Metodo:** `GET`
+* **Descrizione:** Visualizzazione del dettaglio di un singolo prodotto identificato dal codice.
+* **Vincoli d'accesso:** Nessuno.
+* **Parametri (Path):** `id` (codice del prodotto nell'URL).
+* **Risposta (Esempio JSON):**
+{
+"codice_Prodotto": 1,
+"nome": "Maglietta iBuy",
+"costo": 19.99,
+"descrizione": "Maglietta in cotone 100%",
+"tipo": "Fisico",
+"quantita": 49,
+"immagine": "maglietta.jpg",
+"peso": 0.20,
+"dimensione": null,
+"partita_Iva_Venditore": "12345678901",
+"prodottoLNK": "/prodotti/1"
+}
+* **Codici di stato:** `200 OK`, `404 Not Found`.
+
+Endpoint: `/prodotti`
+
+* **Metodo:** `POST`
+* **Descrizione:** Un venditore crea un nuovo prodotto.
+* **Vincoli d'accesso:** Richiede token JWT valido E l'utente deve avere una P.IVA registrata.
+* **Parametri (Body JSON):** `nome`, `costo`, `descrizione`, `tipo` (obbligatori). `quantita`, `peso`, `dimensione` (opzionali in base al tipo).
+* **Risposta (Esempio JSON):**
+{
+"messaggio": "Prodotto creato con successo.",
+"codice_Prodotto": 1
+}
+* **Codici di stato:** `201 Created`, `401 Unauthorized` (non loggato), `403 Forbidden` (loggato ma non venditore).
+
+4. Acquisti (Transazioni)
+
+
+
+Endpoint: `/acquisti`
+
+* **Metodo:** `POST`
+* **Descrizione:** Un utente registrato effettua una transazione per acquistare un prodotto.
+* **Vincoli d'accesso:** Richiede token JWT valido.
+* **Parametri (Body JSON):** `codice_Prodotto`.
+* **Risposta (Esempio JSON):**
+{
+"codice_Acquisto": 2,
+"timestamp": "2026-08-03 15:30:00",
+"costo": 20.19,
+"prodottoLNK": "/prodotti/1"
+}
+* **Codici di stato:**
+* `201 Created` (acquisto completato con successo).
+* `401 Unauthorized` (utente non loggato).
+* `403 Forbidden` (se il prodotto è fisico e l'utente non ha un indirizzo salvato nel profilo).
+* `404 Not Found` (se il prodotto non esiste).
+* `409 Conflict` (se la quantità disponibile del prodotto è 0).
+
+
+
+5. Venditori e Follow
+
+
+
+Endpoint: `/venditori`
+
+* **Metodo:** `GET`
+* **Descrizione:** Ricerca dei venditori tramite nome.
+* **Vincoli d'accesso:** Richiede token JWT valido.
+* **Parametri (Query String):** `q` (stringa di ricerca nome), `size` (1-20), `page` (0-n).
+* **Risposta (Esempio JSON):**
+{
+"page": 0,
+"size": 20,
+"results": [
+{
+"partita_Iva": "12345678901",
+"username_Utente": "mario_venditore"
+}
+]
+}
+* **Codici di stato:** `200 OK`, `401 Unauthorized`.
+
+Endpoint: `/venditori/:username`
+
+* **Metodo:** `GET`
+* **Descrizione:** Visionare i dati anagrafici e la foto profilo di uno specifico venditore.
+* **Vincoli d'accesso:** Richiede token JWT valido.
+* **Parametri (Path):** `username`.
+* **Risposta (Esempio JSON):**
+{
+"username": "mario_venditore",
+"partita_Iva": "12345678901",
+"imm_Profilo": "venditore_prof.jpg"
+}
+* **Codici di stato:** `200 OK`, `401 Unauthorized`, `404 Not Found`.
+
+Endpoint: `/venditori/:username/prodotti`
+
+* **Metodo:** `GET`
+* **Descrizione:** Lista paginata dei prodotti messi in vendita dallo specifico venditore.
+* **Vincoli d'accesso:** Richiede token JWT valido.
+* **Parametri (Path & Query String):** `username`, `size`, `page`.
+* **Risposta (Esempio JSON):**
+{
+"page": 0,
+"size": 20,
+"results": [
+{
+"codice_Prodotto": 1,
+"nome": "Maglietta iBuy",
+"costo": 19.99
+}
+]
+}
+* **Codici di stato:** `200 OK`, `401 Unauthorized`, `404 Not Found`.
+
+Endpoint: `/venditori/:username/followers`
+
+* **Metodo:** `GET`
+* **Descrizione:** Lista degli utenti che seguono il venditore.
+* **Vincoli d'accesso:** Richiede token JWT valido.
+* **Parametri (Path):** `username`.
+* **Risposta (Esempio JSON):**
+{
+"followers": [
+{
+"username": "utente_follower"
+}
+]
+}
+* **Codici di stato:** `200 OK`, `401 Unauthorized`, `404 Not Found`.
+
+Endpoint: `/venditori/:username/followers`
+
+* **Metodo:** `POST`
+* **Descrizione:** L'utente loggato decide di seguire il venditore specificato.
+* **Vincoli d'accesso:** Richiede token JWT valido.
+* **Parametri (Path):** `username`.
+* **Risposta (Esempio JSON):**
+{
+"messaggio": "Ora segui questo venditore."
+}
+* **Codici di stato:** `201 Created`, `401 Unauthorized`, `404 Not Found`, `409 Conflict` (se lo segue già).
+
+Endpoint: `/venditori/:username/followers`
+
+* **Metodo:** `DELETE`
+* **Descrizione:** L'utente loggato decide di smettere di seguire il venditore.
+* **Vincoli d'accesso:** Richiede token JWT valido.
+* **Parametri (Path):** `username`.
+* **Risposta (Esempio JSON):**
+{
+"messaggio": "Hai smesso di seguire questo venditore."
+}
+* **Codici di stato:** `200 OK`, `401 Unauthorized`, `404 Not Found`.
+
+Endpoint: `/profilo/seguiti`
+
+* **Metodo:** `GET`
+* **Descrizione:** Restituisce la lista dei venditori che l'utente loggato sta seguendo.
+* **Vincoli d'accesso:** Richiede token JWT valido.
+* **Parametri (Query String):** `size`, `page`.
+* **Risposta (Esempio JSON):**
+{
+"page": 0,
+"size": 20,
+"results": [
+{
+"username_Utente_Seguito": "mario_venditore"
+}
+]
+}
+* **Codici di stato:** `200 OK`, `401 Unauthorized`.
+
+6. Query SQL e Logica Javascript
+
+
+
+Di seguito si dettagliano le query SQL (sintassi parametrica per libreria 'pg') e la logica applicativa demandata al server Node.js per ciascun endpoint.
+
+1. Autenticazione (/utenti, /login, /refresh, /logout)
+
+
+
+* POST /utenti
+* Query SQL: INSERT INTO utente (username, mail, password) VALUES ($1, $2, $3) RETURNING username;
+* Logica JS: Generazione dell'hash crittografico della password tramite `bcrypt` e gestione dell'errore SQL di violazione vincolo UNIQUE (23505).
+
+
+* POST /login & POST /refresh
+* Query SQL: Gestione dei token di accesso e inserimento/rimozione dei token nella tabella `refresh_token`.
+* Logica JS: Verifica delle credenziali o della validità del refresh token, generazione di una nuova coppia di token JWT e applicazione della rotazione dei token nel database.
+
+
+
+2. Gestione Profilo (/profilo)
+
+
+
+* GET /profilo
+* Query SQL: SELECT u.username, u.mail, u.imm_Profilo, u.via, u.numero_Civico, u.CAP, u.citta, v.partita_Iva FROM utente u LEFT JOIN venditore v ON u.username = v.username_Utente WHERE u.username = $1;
+* Logica JS: Estrazione dello username decodificando il token JWT nell'header della richiesta.
+
+
+* PATCH /profilo
+* Query SQL: UPDATE utente SET ... WHERE username = $3; e opzionalmente INSERT INTO venditore.
+* Logica JS: Utilizzo di `express-fileupload` per salvare fisicamente l'immagine nella cartella `resources` e memorizzare il percorso testuale.
+
+
+
+3. Prodotti (/prodotti)
+
+
+
+* GET /prodotti
+* Query SQL: SELECT * FROM prodotto WHERE nome ILIKE '%' || $1 || '%' AND ($2 IS NULL OR tipo = $2) LIMIT $3 OFFSET $4;
+* Logica JS: Calcolo dell'OFFSET e costruzione dei link HATEOAS (`next` / `prev`).
+
+
+* POST /prodotti
+* Query SQL: INSERT INTO prodotto (...) VALUES (...) RETURNING codice_Prodotto;
+* Logica JS: Controllo dei permessi tramite JWT e verifica della P.IVA del venditore.
+
+
+
+4. Acquisti (/acquisti)
+
+
+
+* POST /acquisti
+* Query SQL: Verifica scorte, controllo indirizzo utente, decremento quantità e inserimento nel registro acquisti.
+* Logica JS: Validazione della disponibilità (blocco con 409 se quantità 0), verifica dell'indirizzo obbligatorio per i prodotti fisici (blocco con 403) e calcolo dinamico del costo finale.
+
+
+
+5. Venditori e Follow
+
+
+
+* GET /venditori e gestione follow
+* Query SQL: Ricerca testuale con paginazione e gestione delle relazioni nella tabella `segue`.
+* Logica JS: Gestione dei conflitti di chiave primaria e restituzione dei dati strutturati con collegamenti HATEOAS.
+
+
+
+Documentazione e Test delle API con Swagger:
+Per facilitare il collaudo e la verifica delle API REST sviluppate, è stata integrata l'interfaccia grafica automatica di Swagger utilizzando le librerie `swagger-ui-express` e `swagger-autogen`. Avviando il server Node.js, la documentazione interattiva ed eseguibile di tutti gli endpoint del sistema è accessibile tramite l'esposizione della rotta dedicata `/api-docs`.

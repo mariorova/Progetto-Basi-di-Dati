@@ -1,0 +1,89 @@
+Progetto iBuy versione 1.01
+
+CREATE TYPE TIPOPRODOTTO AS ENUM ('Fisico', 'Digitale');
+
+CREATE TABLE utente (
+    username VARCHAR(50) PRIMARY KEY,
+    mail VARCHAR(100) UNIQUE NOT NULL,
+    password VARCHAR(161) NOT NULL, 
+    imm_Profilo VARCHAR(255),
+    via VARCHAR(100),
+    numero_Civico VARCHAR(10),
+    CAP VARCHAR(10),
+    citta VARCHAR(100)
+);
+
+CREATE TABLE venditore (
+    partita_Iva VARCHAR(11) PRIMARY KEY,
+    username_Utente VARCHAR(50) UNIQUE NOT NULL REFERENCES utente (username) ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE TABLE prodotto (
+    codice_Prodotto SERIAL PRIMARY KEY,
+    nome VARCHAR(255) NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    costo DECIMAL(10, 2) NOT NULL,
+    descrizione TEXT NOT NULL,
+    tipo TIPOPRODOTTO NOT NULL,
+    quantita INTEGER,
+    immagine VARCHAR(255),
+    peso DECIMAL(10, 2),
+    dimensione INTEGER,
+    partita_Iva_Venditore VARCHAR(11) NOT NULL REFERENCES venditore (partita_Iva) ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE TABLE acquisto (
+    codice_Acquisto SERIAL PRIMARY KEY,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    costo DECIMAL(10, 2) NOT NULL,
+    username_Utente VARCHAR(50) NOT NULL REFERENCES utente (username) ON UPDATE CASCADE,
+    codice_Prodotto INTEGER NOT NULL REFERENCES prodotto (codice_Prodotto) ON UPDATE CASCADE
+);
+
+CREATE TABLE segue (
+    username_Utente VARCHAR(50) REFERENCES utente (username) ON UPDATE CASCADE ON DELETE CASCADE,
+    partita_Iva_Venditore VARCHAR(11) REFERENCES venditore (partita_Iva) ON UPDATE CASCADE ON DELETE CASCADE,
+    PRIMARY KEY (username_Utente, partita_Iva_Venditore)
+);
+
+CREATE TABLE refresh_token (
+    id SERIAL PRIMARY KEY,
+    token VARCHAR(512) NOT NULL UNIQUE,
+    username_utente VARCHAR(50) REFERENCES utente(username) ON DELETE CASCADE,
+    creato_il TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+-- POPOLAMENTO DEL DATABASE (Dati di prova)
+-- Inserimento UTENTI
+INSERT INTO utente VALUES ('mario_rossi', 'mario@email.com', 'hashed_pwd_8a2b5c...', 'mario_prof.jpg', 'Via Roma', '10', '00100', 'Roma');
+-- Inserisco un utente senza indirizzo e senza immagine (per testare i valori NULL)
+INSERT INTO utente VALUES ('luigi_verde', 'luigi@email.com', 'hashed_pwd_9x8y7z...', NULL, NULL, NULL, NULL, NULL);
+-- Inserisco utenti che diventeranno venditori
+INSERT INTO utente VALUES ('giulia_shop', 'giulia@shop.it', 'hashed_pwd_1a2b3c...', 'giulia.png', 'Via Milano', '22', '20100', 'Milano');
+INSERT INTO utente VALUES ('tech_store', 'info@techstore.com', 'hashed_pwd_4d5e6f...', 'tech_logo.jpg', 'Via Torino', '1', '10100', 'Torino');
+
+-- Inserimento VENDITORI
+INSERT INTO venditore VALUES ('12345678901', 'giulia_shop');
+INSERT INTO venditore VALUES ('10987654321', 'tech_store');
+
+-- Inserimento PRODOTTI
+-- Prodotto Fisico (ha peso ma non dimensione. Il timestamp e il codice usano DEFAULT)
+INSERT INTO prodotto VALUES (DEFAULT, 'Maglietta iBuy', DEFAULT, 19.99, 'Maglietta in cotone', 'Fisico', 50, 'maglietta.jpg', 0.20, NULL, '12345678901');
+-- Prodotto Digitale (ha dimensione ma non peso. Quantità NULL perché non ha limiti di acquisto)
+INSERT INTO prodotto VALUES (DEFAULT, 'Corso Node.js', DEFAULT, 29.99, 'Videocorso completo', 'Digitale', NULL, 'corso.png', NULL, 1500000, '10987654321');
+-- Prodotto Fisico esaurito (quantità = 0)
+INSERT INTO prodotto VALUES (DEFAULT, 'Smartphone XYZ', DEFAULT, 599.00, 'Ultimo modello', 'Fisico', 0, 'smartphone.jpg', 0.50, NULL, '10987654321');
+
+-- Inserimento ACQUISTI
+-- Acquisto di un prodotto fisico (Costo = prezzo + peso = 19.99 + 0.20 = 20.19)
+INSERT INTO acquisto VALUES (DEFAULT, DEFAULT, 20.19, 'mario_rossi', 1);
+-- Acquisto di un prodotto digitale (Costo = prezzo del prodotto = 29.99)
+INSERT INTO acquisto VALUES (DEFAULT, DEFAULT, 29.99, 'mario_rossi', 2);
+-- Luigi compra il prodotto fisico (ha un indirizzo, lo aggiorneremo in fase di API)
+INSERT INTO acquisto VALUES (DEFAULT, DEFAULT, 20.19, 'luigi_verde', 1);
+
+-- Inserimento FOLLOW (SEGUE)
+INSERT INTO segue VALUES ('mario_rossi', '12345678901'); -- Mario segue Giulia
+INSERT INTO segue VALUES ('mario_rossi', '10987654321'); -- Mario segue Tech Store
+INSERT INTO segue VALUES ('luigi_verde', '10987654321'); -- Luigi segue Tech Store
